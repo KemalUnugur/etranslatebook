@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { initializeGemini } from './services/geminiService';
 import { analyzeEpub, translateEpub } from './services/epubService';
+import { initializeSupabase, submitLog, fetchLogs } from './services/supabaseService';
 import { 
   EpubFile, 
   ProcessStatus, 
@@ -35,28 +36,9 @@ import {
   Sparkles,
   Star,
   MessageSquare,
-  ThumbsUp
+  ThumbsUp,
+  Database
 } from 'lucide-react';
-
-// --- UTILS FOR LOGGING ---
-const getLogs = (): ActivityLog[] => {
-  const logs = localStorage.getItem('app_activity_logs');
-  return logs ? JSON.parse(logs) : [];
-};
-
-const addLog = (userEmail: string, action: ActivityLog['action'], details: string) => {
-  const newLog: ActivityLog = {
-    id: Date.now(),
-    timestamp: new Date().toISOString(),
-    userEmail,
-    action,
-    details
-  };
-  const currentLogs = getLogs();
-  // Keep last 100 logs
-  const updatedLogs = [newLog, ...currentLogs].slice(100); // Fixed slice logic to keep most recent
-  localStorage.setItem('app_activity_logs', JSON.stringify(updatedLogs));
-};
 
 // --- COMPONENTS ---
 
@@ -219,16 +201,31 @@ const FeedbackSection: React.FC<{ onSubmit: (rating: number, comment: string) =>
 
 const AdminDashboard: React.FC<{ onLogout: () => void, currentUserEmail: string }> = ({ onLogout, currentUserEmail }) => {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setLogs(getLogs());
+    const loadLogs = async () => {
+      setIsLoading(true);
+      const data = await fetchLogs();
+      setLogs(data);
+      setIsLoading(false);
+    };
+    loadLogs();
+    
+    // Auto refresh every 30 seconds
+    const interval = setInterval(loadLogs, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const formatDate = (isoString: string) => {
-    return new Date(isoString).toLocaleString('tr-TR', {
-      day: '2-digit', month: 'long', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
+    try {
+      return new Date(isoString).toLocaleString('tr-TR', {
+        day: '2-digit', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) {
+      return isoString;
+    }
   };
 
   return (
@@ -292,9 +289,12 @@ const AdminDashboard: React.FC<{ onLogout: () => void, currentUserEmail: string 
               <FileText className="w-5 h-5 text-slate-400" />
               Sistem Kayıtları
             </h2>
-            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
-              Son 100 işlem
-            </span>
+            <div className="flex items-center gap-3">
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+              <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                Canlı Veri (Supabase)
+              </span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-600">
@@ -310,7 +310,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void, currentUserEmail: string 
                 {logs.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="px-6 py-8 text-center text-slate-400">
-                      Henüz kayıt bulunmamaktadır.
+                      {isLoading ? 'Veriler yükleniyor...' : 'Henüz kayıt bulunmamaktadır veya veritabanı bağlı değil.'}
                     </td>
                   </tr>
                 ) : (
@@ -361,7 +361,14 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState("");
 
   // --- APP STATE ---
-  const [apiKey, setApiKey] = useState<string>(process.env.API_KEY || '');
+  // API key must come from process.env only
+  const apiKey = process.env.API_KEY || '';
+  
+  // Initialize Supabase (with hardcoded values from service)
+  useEffect(() => {
+    initializeSupabase();
+  }, []);
+
   const [file, setFile] = useState<EpubFile | null>(null);
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(SUPPORTED_LANGUAGES[0]); // Default Turkish
   const [isEducationMode, setIsEducationMode] = useState(false);
@@ -391,17 +398,16 @@ const App: React.FC = () => {
       setIsAuthenticated(true);
       setUserRole('ADMIN');
       setLoginError("");
-      addLog(email, 'LOGIN', 'Admin panel erişimi sağlandı.');
+      submitLog(email, 'LOGIN', 'Admin panel erişimi sağlandı.');
       return;
     }
 
     // USER CHECK
-    // Allow both the typo version (requested by user) and the correct spelling
     if ((email === "tilly@etransaltebook.com" || email === "tilly@etranslatebook.com") && password === "tilbem123") {
       setIsAuthenticated(true);
       setUserRole('USER');
       setLoginError("");
-      addLog(email, 'LOGIN', 'Kullanıcı sisteme giriş yaptı.');
+      submitLog(email, 'LOGIN', 'Kullanıcı sisteme giriş yaptı.');
     } else {
       setLoginError("E-posta veya şifre hatalı.");
     }
@@ -440,7 +446,6 @@ const App: React.FC = () => {
             name: selectedFile.name,
             data: e.target.result as ArrayBuffer
           });
-          // Reset
           setState({
             status: ProcessStatus.IDLE,
             currentChapter: 0,
@@ -485,8 +490,7 @@ const App: React.FC = () => {
   const executeTranslation = async () => {
     if (!file || !analysisResult) return;
 
-    // LOG START
-    addLog(email, 'TRANSLATE_START', `Kitap: ${file.name}, Hedef: ${targetLang.name}, Eğitim Modu: ${isEducationMode ? 'Evet' : 'Hayır'}`);
+    submitLog(email, 'TRANSLATE_START', `Kitap: ${file.name}, Hedef: ${targetLang.name}, Eğitim Modu: ${isEducationMode ? 'Evet' : 'Hayır'}`);
 
     try {
       const translatedBlob = await translateEpub(
@@ -500,8 +504,7 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(translatedBlob);
       setDownloadUrl(url);
 
-      // LOG SUCCESS
-      addLog(email, 'TRANSLATE_COMPLETE', `Başarılı. Kitap: ${file.name}`);
+      submitLog(email, 'TRANSLATE_COMPLETE', `Başarılı. Kitap: ${file.name}`);
       
     } catch (error: any) {
       console.error(error);
@@ -514,7 +517,7 @@ const App: React.FC = () => {
   };
 
   const handleFeedbackSubmit = (rating: number, comment: string) => {
-    addLog(email, 'FEEDBACK', `Puan: ${rating}/5, Yorum: ${comment || 'Yok'}`);
+    submitLog(email, 'FEEDBACK', `Puan: ${rating}/5, Yorum: ${comment || 'Yok'}`);
   };
 
   // --- RENDER: LOGIN SCREEN ---
@@ -704,41 +707,8 @@ const App: React.FC = () => {
           </p>
         </div>
 
-        {/* API Key Section */}
-        {!process.env.API_KEY && (
-           <div className="mb-8 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-             <div className="flex items-center justify-between mb-4">
-               <label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                 <div className="w-2 h-6 bg-blue-500 rounded-full"></div>
-                 API Konfigürasyonu
-               </label>
-               <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                 Ücretsiz Kullanılabilir (Free Tier)
-               </span>
-             </div>
-             <input 
-                type="password" 
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Google Gemini API Anahtarı"
-                className="w-full px-4 py-3 border border-slate-200 bg-slate-50 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-             />
-             <div className="text-xs text-slate-500 mt-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 justify-between">
-                <p className="flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  API anahtarınız sadece tarayıcınızda işlenir.
-                </p>
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 hover:underline"
-                >
-                  Ücretsiz Anahtar Alın (Google AI Studio) <ExternalLink className="w-3 h-3" />
-                </a>
-             </div>
-           </div>
-        )}
+        {/* API Key Configuration Section removed to comply with guidelines */}
+        {/* The API Key is obtained exclusively from process.env.API_KEY */}
 
         {/* Main Card */}
         <div className="bg-white rounded-3xl shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative transition-all duration-300 mb-12">
@@ -993,32 +963,31 @@ const App: React.FC = () => {
 
               {/* ERROR STATE */}
               {state.status === ProcessStatus.ERROR && (
-                 <div className="py-12 flex flex-col items-center text-center bg-red-50/50 rounded-2xl animate-in zoom-in duration-300 border border-red-100">
-                   <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                     <AlertCircle className="w-8 h-8" />
-                   </div>
-                   <h3 className="text-xl font-bold text-slate-900 mb-2">İşlem Sırasında Hata Oluştu</h3>
-                   <p className="text-slate-600 mb-8 max-w-sm font-medium">
-                     {state.message}
-                   </p>
-                   <button 
-                      onClick={() => setState(prev => ({ ...prev, status: ProcessStatus.IDLE, message: '' }))}
-                      className="px-8 py-3 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-bold transition shadow-sm"
-                    >
-                      Tekrar Dene
-                    </button>
-                 </div>
+                <div className="py-12 flex flex-col items-center text-center animate-in fade-in duration-500">
+                  <div className="w-24 h-24 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 shadow-md border-4 border-white">
+                    <AlertCircle className="w-12 h-12" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-3">Bir Hata Oluştu</h3>
+                  <p className="text-slate-500 mb-8 max-w-md mx-auto leading-relaxed font-medium bg-red-50/50 p-4 rounded-xl border border-red-100 text-sm">
+                    {state.message}
+                  </p>
+                  
+                  <button 
+                    onClick={() => {
+                        setFile(null);
+                        setAnalysisResult(null);
+                        setState(prev => ({ ...prev, status: ProcessStatus.IDLE, message: '' }));
+                    }}
+                    className="px-8 py-3 bg-slate-900 text-white hover:bg-slate-800 rounded-xl font-bold transition shadow-lg shadow-slate-200"
+                  >
+                    Tekrar Dene
+                  </button>
+                </div>
               )}
             </div>
           )}
-
         </div>
-        
-        {/* Donation Section for Main App */}
-        <DonationSection />
-
       </main>
-
       <Footer />
     </div>
   );
