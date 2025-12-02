@@ -498,7 +498,8 @@ const App: React.FC = () => {
         analysisResult.sourceLang,
         targetLang.name,
         isEducationMode,
-        (updates) => setState(prev => ({ ...prev, ...updates }))
+        (updates) => setState(prev => ({ ...prev, ...updates })),
+        analysisResult.previewText // Pass the preview text for context awareness
       );
 
       const url = URL.createObjectURL(translatedBlob);
@@ -598,7 +599,7 @@ const App: React.FC = () => {
                  </div>
                  
                  <h3 className="text-3xl font-bold leading-tight mb-4">
-                   Öğretmenler ve Öğrenciler İçin <span className="text-blue-300">Eğitim Modu</span>
+                   <span className="text-blue-300">Eğitim Modu</span>
                  </h3>
                  <p className="text-blue-100/80 leading-relaxed font-light mb-8 text-lg">
                    Yapay zeka, çeviri yaparken dil öğrenimini destekleyen özel bir format sunar.
@@ -700,7 +701,7 @@ const App: React.FC = () => {
         {/* Intro Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight mb-6">
-            EPUB Kitap Çevirici
+            Epub Çeviri
           </h2>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
             EPUB formatındaki kitaplarınızı formatı bozulmadan istediğiniz dile çevirin.
@@ -858,7 +859,7 @@ const App: React.FC = () => {
                               <GraduationCap className={`w-6 h-6 ${isEducationMode ? 'text-white' : 'text-indigo-600'}`} />
                            </div>
                            <div className="flex-grow">
-                             <h4 className="font-bold text-sm">Eğitim Modu (Öğretmenler İçin)</h4>
+                             <h4 className="font-bold text-sm">Eğitim Modu</h4>
                              <p className={`text-xs mt-1 ${isEducationMode ? 'text-indigo-100' : 'text-indigo-600/80'}`}>
                                Orijinal metni korur, altına çevirisini ekler (Çift Dilli).
                              </p>

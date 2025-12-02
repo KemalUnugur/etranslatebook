@@ -17,15 +17,13 @@ export const translateHtmlChunk = async (
 ): Promise<string> => {
   if (!aiClient) throw new Error("API Key not initialized");
 
-  // We use Gemini 2.5 Flash. It allows 'thinkingConfig' which is crucial for
-  // complex grammar transformations (like English -> Turkish) to preserve meaning.
+  // We use Gemini 2.5 Flash for high speed and large context.
   const modelId = "gemini-2.5-flash"; 
 
   let prompt = "";
 
   if (isEducationMode) {
     // --- EDUCATION MODE PROMPT (BILINGUAL) ---
-    // Improved for better visual separation and clear semantic mapping.
     prompt = `
       You are an expert language teacher preparing bilingual reading materials for students.
       Your task is to create a "Parallel Text" version of the provided HTML content.
@@ -40,44 +38,52 @@ export const translateHtmlChunk = async (
          - Immediately below it, insert the **Translated Text** wrapped in a special styling block.
       
       3. **Styling the Translation**:
-         - Wrap the translated text in a <div> with the following inline style to make it look like a textbook note:
+         - Wrap the translated text in a <div> with the following inline style:
            \`<div style="background-color: #f8fafc; border-left: 4px solid #6366f1; padding: 8px 12px; margin-top: 6px; margin-bottom: 16px; border-radius: 0 8px 8px 0; color: #334155; font-size: 0.95em; font-family: sans-serif; line-height: 1.5;">TRANSLATION_HERE</div>\`
       
-      4. **Translation Style (Education Focused)**:
-         - The translation should be **clear and grammatically correct** in ${targetLanguage}.
-         - It should help the student understand the sentence structure of the original text.
-         - Do not be too poetic; be clear and direct, but avoid machine-like literal translations.
+      4. **Translation Style**:
+         - The translation should be clear, grammatically correct, and educational.
+         - It should help the student understand the sentence structure.
       
       ### INPUT HTML CHUNK
       ${htmlContent}
     `;
   } else {
-    // --- STANDARD TRANSLATION PROMPT (HIGH QUALITY) ---
-    // Refined for "Anlaşılırlık" (Clarity/Readability)
+    // --- HIGH-QUALITY LITERARY TRANSLATION PROMPT ---
+    // Specifically engineered for "Anlaşılır Türkçe" (Natural Turkish)
+    
     prompt = `
-      You are a professional literary translator known for producing texts that flow naturally and are easy to read. 
-      Your task is to translate the following HTML content into ${targetLanguage}.
+      You are an award-winning literary translator and editor, famous for turning foreign texts into fluent, native-sounding ${targetLanguage} masterpieces.
+      
+      ### MISSION
+      Rewrite the provided text in ${targetLanguage}. Do not just "translate" words; **localize the meaning**.
+      The result must read as if it was originally written by a native author in ${targetLanguage}, not a translation.
 
-      ### TARGET LANGUAGE
-      ${targetLanguage}
+      ### CONTEXT OF THE BOOK
+      ${contextInfo}
 
-      ### CRITICAL RULES FOR QUALITY
-      1. **Prioritize Readability (Anlaşılırlık)**: 
-         - The result MUST sound like it was originally written in ${targetLanguage}. 
-         - **Break Long Sentences**: If an English sentence is long and complex, split it into two or more shorter sentences in ${targetLanguage} to make it easier to understand. Do not force long clauses if they sound unnatural.
-         - **No "Translationese"**: Avoid literal translations of idioms. Use the natural local equivalent (e.g., convert "piece of cake" to "çocuk oyuncağı" for Turkish).
+      ### CRITICAL RULES FOR NATURALNESS (ESPECIALLY FOR TURKISH)
+      1. **Sentence Reconstruction (Re-writing)**:
+         - English sentences are often passive and long. Break them down.
+         - **Shift Word Order**: English is SVO. Turkish is SOV. Completely rearrange the sentence structure to fit the target grammar. 
+         - **Avoid "Translationese"**: Never use structure that mirrors the English source if it sounds awkward in ${targetLanguage}. 
+      
+      2. **Idioms & Cultural Equivalents**:
+         - Detect idioms (e.g., "raining cats and dogs"). NEVER translate them literally. Use the local cultural equivalent (e.g., "bardaktan boşalırcasına yağmak").
+         - If a metaphor doesn't make sense in ${targetLanguage}, replace it with a similar local metaphor that conveys the same feeling.
 
-      2. **Grammar & Logic**:
-         - Adjust word order strictly according to ${targetLanguage} grammar.
-         - Ensure subject-verb agreement and correct tense usage.
+      3. **Flow & Conjunctions**:
+         - Use rich connective words (halbuki, oysaki, nitekim, buna rağmen) to ensure smooth transitions between sentences.
+         - Avoid repetitive sentence starts.
 
-      3. **HTML Preservation**:
-         - Return VALID HTML.
-         - Keep all bold (<b>, <strong>), italic (<i>, <em>), and structural tags.
-         - If you split a sentence that has a formatting tag, apply the tag logically to the corresponding words in the new sentences.
+      4. **Tone Consistency**:
+         - If the context implies dialogue, use spoken language patterns.
+         - If it is narration, use proper literary tense (di'li geçmiş zaman or miş'li geçmiş zaman depending on context).
 
-      4. **Tone**:
-         - Maintain the tone of the original book (whether it's serious, funny, or academic).
+      5. **HTML INTEGRITY**:
+         - You MUST preserve the HTML structure (p, div, b, i, h1, etc.).
+         - Do not translate class names or IDs.
+         - Only translate the *content* inside the tags.
 
       ### INPUT HTML CHUNK
       ${htmlContent}
@@ -89,10 +95,9 @@ export const translateHtmlChunk = async (
       model: modelId,
       contents: prompt,
       config: {
-        // High temperature for natural flow
-        temperature: 0.7, 
-        // Increased Thinking Budget to 4096 (Maximum reasoning for 2.5 Flash)
-        // This is critical for quality: it allows the model to "draft" the sentence structure internally before outputting.
+        // High temperature allows for creative sentence restructuring (crucial for literary translation)
+        temperature: 0.85, 
+        // Max Thinking Budget allows the model to "draft" the sentence structure in its head before outputting.
         thinkingConfig: { thinkingBudget: 4096 } 
       }
     });
@@ -105,7 +110,6 @@ export const translateHtmlChunk = async (
     return resultText;
   } catch (error) {
     console.error("Gemini Translation Error:", error);
-    // On error, return original content to avoid breaking the book structure
     return htmlContent; 
   }
 };

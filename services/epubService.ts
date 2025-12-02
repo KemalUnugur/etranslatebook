@@ -73,7 +73,8 @@ export const analyzeEpub = async (
         const cleanText = content.replace(/<[^>]*>/g, ' ').trim();
         if (cleanText.length > 50) {
           sourceLang = await detectLanguage(cleanText.substring(0, 500));
-          previewText = cleanText.substring(0, 100);
+          // Store a larger preview text to help the translator understand the style later
+          previewText = cleanText.substring(0, 1000); 
           break;
         }
       }
@@ -95,7 +96,8 @@ export const translateEpub = async (
   sourceLang: string,
   targetLanguage: string,
   isEducationMode: boolean,
-  updateStatus: (state: Partial<ProcessingState>) => void
+  updateStatus: (state: Partial<ProcessingState>) => void,
+  analysisPreviewText: string = "" // New parameter for context
 ): Promise<Blob> => {
   const zip = getJSZip();
   const loadedZip = await zip.loadAsync(fileData);
@@ -104,8 +106,17 @@ export const translateEpub = async (
   updateStatus({ 
     status: ProcessStatus.TRANSLATING, 
     totalChapters: filesToTranslate.length,
-    message: `${sourceLang} dilinden ${targetLanguage} diline ${isEducationMode ? '(Eğitim Modu)' : ''} çeviri başlıyor...`
+    message: `${sourceLang} dilinden ${targetLanguage} diline ${isEducationMode ? '(Eğitim Modu)' : ''} edebi çeviri başlıyor...`
   });
+
+  // Construct a Context String based on the analysis
+  // This tells the AI: "This is the style of the book you are translating"
+  const bookContext = `
+    This is a book written in ${sourceLang}. 
+    Here is a sample of the original writing style and tone: 
+    "${analysisPreviewText.substring(0, 300)}..."
+    Maintain this tone (formal, casual, archaic, etc.) in the translation.
+  `;
 
   // Translation Loop
   for (let i = 0; i < filesToTranslate.length; i++) {
@@ -122,14 +133,14 @@ export const translateEpub = async (
     updateStatus({
       currentChapter: i + 1,
       progress: Math.round(((i) / filesToTranslate.length) * 100),
-      message: `Bölüm ${i + 1} / ${filesToTranslate.length} çevriliyor...`
+      message: `Bölüm ${i + 1} / ${filesToTranslate.length} işleniyor... (Anlam analizi ve çeviri)`
     });
     
     // Translate
     const translatedHtml = await translateHtmlChunk(
       currentFileContent, 
       targetLanguage, 
-      `${sourceLang} dilinde yazılmış bir kitap`,
+      bookContext,
       isEducationMode
     );
     
@@ -140,9 +151,9 @@ export const translateEpub = async (
     // Gemini Free tier has a Rate Limit (RPM). To prevent errors, we add a small delay.
     if (i < filesToTranslate.length - 1) {
       updateStatus({
-        message: `API limitlerini aşmamak için kısa bir süre bekleniyor... (${i + 1}/${filesToTranslate.length})`
+        message: `API limitlerini aşmamak için optimize ediliyor... (${i + 1}/${filesToTranslate.length})`
       });
-      await new Promise(resolve => setTimeout(resolve, 2500)); // 2.5 seconds delay
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay slightly for safety with complex prompts
     }
   }
 
@@ -158,7 +169,7 @@ export const translateEpub = async (
   updateStatus({
     status: ProcessStatus.COMPLETED,
     progress: 100,
-    message: "Çeviri tamamlandı! EPUB yeniden oluşturuluyor..."
+    message: "Çeviri tamamlandı! Kitap yeniden oluşturuluyor..."
   });
 
   return await loadedZip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
