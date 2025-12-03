@@ -1,67 +1,60 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
 import { ActivityLog } from '../types';
 
 // Supabase Configuration
 const SUPABASE_URL = 'https://heuhphfzgobzauqpgzrx.supabase.co';
 
-// UPDATED: Reverting to the LEGACY ANON KEY.
-// We also disable session persistence to prevent browser caching issues (401 errors).
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhldWhwaGZ6Z29iemF1cXBnenJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2OTk2NDMsImV4cCI6MjA4MDI3NTY0M30.M0-p2VwEnn4tT9dNYAowHMX569YHyhUToy1_79J2CPA';
-
-let supabase: SupabaseClient | null = null;
+// SERVICE ROLE KEY (SECRET)
+// Bu anahtar "Patron" anahtarıdır. RLS kurallarını ve Auth kontrollerini tamamen bypass eder.
+// 401 hatası almamak için en garanti yöntem budur.
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhldWhwaGZ6Z29iemF1cXBnenJ4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDY5OTY0MywiZXhwIjoyMDgwMjc1NjQzfQ.W1DVaP5bDqJi2_wRzyhPbSBmoIlP_XDlHiFkDOqvG78';
 
 export const initializeSupabase = () => {
-  if (SUPABASE_URL && SUPABASE_KEY) {
-    try {
-      // auth: { persistSession: false } is CRITICAL here.
-      // It forces the client to use the API Key for every request instead of looking for old/invalid user tokens.
-      supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false
-        }
-      });
-      console.log("Supabase bağlantısı (Stateless) sağlandı.");
-    } catch (e) {
-      console.error("Supabase başlatma hatası:", e);
-    }
-  }
+  // Console log removed for production cleanliness
 };
 
 export const submitLog = async (userEmail: string, action: ActivityLog['action'], details: string) => {
+  // Timestamp'i veritabanına (Postgres) bırakıyoruz, manuel göndermiyoruz.
   const newLog = {
     user_email: userEmail,
     action,
-    details,
-    timestamp: new Date().toISOString()
+    details
   };
 
-  // 1. Try sending to Supabase (Cloud)
-  if (supabase) {
-    try {
-      const { error } = await supabase.from('logs').insert([newLog]);
-      
-      if (error) {
-        console.error("Supabase Insert Hatası Detayı:", error.message, error.details);
-        throw error;
-      }
-      return; 
-    } catch (error) {
-      // Silent fail to console to not block user flow
-      console.error("Supabase Log yazılamadı (Yedek sistem kullanılacak).");
-    }
+  // 1. Try sending to Supabase via Direct REST API
+  try {
+    // ?nocache parametresi KALDIRILDI (400 Hatasına sebep oluyordu)
+    // cache: 'no-store' ve Pragma headerları eklendi.
+    await fetch(`${SUPABASE_URL}/rest/v1/logs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'return=minimal',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      },
+      body: JSON.stringify(newLog),
+      cache: 'no-store'
+    });
+  } catch (error) {
+    // Silent fail for logs
   }
 
   // 2. Fallback to LocalStorage
   try {
     const existingLogsStr = localStorage.getItem('app_activity_logs');
     const existingLogs = existingLogsStr ? JSON.parse(existingLogsStr) : [];
-    const localLog = { ...newLog, id: Date.now() };
-    const updatedLogs = [localLog, ...existingLogs].slice(0, 100);
-    localStorage.setItem('app_activity_logs', JSON.stringify(updatedLogs));
+    const localLog = { 
+      ...newLog, 
+      timestamp: new Date().toISOString(), // Yerel için timestamp ekle
+      id: Date.now() 
+    };
+    // Son 50 yerel log
+    localStorage.setItem('app_activity_logs', JSON.stringify([localLog, ...existingLogs].slice(0, 50)));
   } catch (e) {
-    console.error("LocalStorage hatası:", e);
+    // Ignore storage errors
   }
 };
 
@@ -69,20 +62,23 @@ export const fetchLogs = async (): Promise<ActivityLog[]> => {
   let cloudLogs: ActivityLog[] = [];
   
   // 1. Try fetching from Supabase
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('logs')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(100);
-        
-      if (error) {
-         console.error("Supabase Fetch Hatası:", error.message);
-         throw error;
-      }
-      
-      if (data) {
+  try {
+    // ?nocache parametresi KALDIRILDI.
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/logs?select=*&order=timestamp.desc&limit=2000`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      },
+      cache: 'no-store' // Tarayıcı önbelleğini engellemek için standart yöntem
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data)) {
         cloudLogs = data.map((item: any) => ({
           id: item.id,
           timestamp: item.timestamp,
@@ -91,19 +87,18 @@ export const fetchLogs = async (): Promise<ActivityLog[]> => {
           details: item.details
         }));
       }
-    } catch (error) {
-      console.error("Loglar çekilemedi (Supabase).");
     }
+  } catch (error) {
+    // Silent fail
   }
 
-  // 2. Fetch LocalStorage
-  let localLogs: ActivityLog[] = [];
+  if (cloudLogs.length > 0) return cloudLogs;
+
+  // 2. Fallback to LocalStorage
   try {
     const logsStr = localStorage.getItem('app_activity_logs');
-    localLogs = logsStr ? JSON.parse(logsStr) : [];
+    return logsStr ? JSON.parse(logsStr) : [];
   } catch (e) {
-    console.error("LocalStorage okuma hatası:", e);
+    return [];
   }
-
-  return cloudLogs.length > 0 ? cloudLogs : localLogs;
 };

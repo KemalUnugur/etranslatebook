@@ -1,24 +1,58 @@
+
 <!DOCTYPE html>
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>eTranslateBook - Profesyonel EPUB Kitap Çeviri</title>
+    
+    <!-- AGGRESSIVE CACHE BUSTING -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <title>eTranslateBook v2.5 - EPUB Kitap Çeviri</title>
     <meta name="description" content="Yapay zeka teknolojisi ile EPUB kitaplarınızı formatı bozulmadan, edebi kalitede Türkçeye ve diğer dillere çevirin.">
     <meta name="keywords" content="epub çeviri, kitap çeviri, yapay zeka çeviri, ebook translator, pdf çeviri, ai translation">
     <link rel="canonical" href="https://etranslatebook.com" />
+    
+    <!-- Favicon (Book Emoji) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📖</text></svg>">
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- JSZip for handling EPUB files in the browser -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
       body { font-family: 'Inter', sans-serif; }
-      /* Custom scrollbar for webkit */
       ::-webkit-scrollbar { width: 8px; }
       ::-webkit-scrollbar-track { background: #f1f1f1; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
+
+    <!-- CONSOLE SUPPRESSOR -->
+    <script>
+      (function() {
+        const noop = function() {};
+        console.log = noop;
+        console.warn = noop;
+        console.error = noop;
+        console.info = noop;
+        console.debug = noop;
+      })();
+    </script>
+
+    <!-- Service Worker Killer: Unregister old workers to force update -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+    </script>
+
   <script type="importmap">
 {
   "imports": {
@@ -26,8 +60,7 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.39.0"
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0"
   }
 }
 </script>

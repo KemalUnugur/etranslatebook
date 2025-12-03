@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 let aiClient: GoogleGenAI | null = null;
@@ -50,42 +51,42 @@ export const translateHtmlChunk = async (
     `;
   } else {
     // --- HIGH-QUALITY LITERARY TRANSLATION PROMPT ---
-    // Specifically engineered for "Anlaşılır Türkçe" (Natural Turkish)
-    
     prompt = `
-      You are an award-winning literary translator and editor, famous for turning foreign texts into fluent, native-sounding ${targetLanguage} masterpieces.
+      You are an elite literary translator and editor. Your task is to rewrite the following book content into ${targetLanguage}.
       
-      ### MISSION
-      Rewrite the provided text in ${targetLanguage}. Do not just "translate" words; **localize the meaning**.
-      The result must read as if it was originally written by a native author in ${targetLanguage}, not a translation.
+      ### CRITICAL GOAL: NATURALNESS & MEANING
+      The result must NOT look like a translation. It must read as if it was originally written in ${targetLanguage} by a skilled author.
+      **Preserve the meaning, lose the sentence structure.**
 
-      ### CONTEXT OF THE BOOK
+      ### BOOK CONTEXT & STYLE
       ${contextInfo}
 
-      ### CRITICAL RULES FOR NATURALNESS (ESPECIALLY FOR TURKISH)
-      1. **Sentence Reconstruction (Re-writing)**:
-         - English sentences are often passive and long. Break them down.
-         - **Shift Word Order**: English is SVO. Turkish is SOV. Completely rearrange the sentence structure to fit the target grammar. 
-         - **Avoid "Translationese"**: Never use structure that mirrors the English source if it sounds awkward in ${targetLanguage}. 
-      
-      2. **Idioms & Cultural Equivalents**:
-         - Detect idioms (e.g., "raining cats and dogs"). NEVER translate them literally. Use the local cultural equivalent (e.g., "bardaktan boşalırcasına yağmak").
-         - If a metaphor doesn't make sense in ${targetLanguage}, replace it with a similar local metaphor that conveys the same feeling.
+      ### STRICT TRANSLATION RULES
+      1. **Reconstruct, Don't Translate**: 
+         - Do NOT translate sentence-by-sentence linearly if it hurts the flow.
+         - Read the whole paragraph, understand the *intent* and *emotion*, then express that in ${targetLanguage} using natural phrasing.
+         - **For English to Turkish:** You MUST abandon English SVO (Subject-Verb-Object) order. Use proper Turkish SOV order. Use "Devrik Cümle" only for poetic emphasis.
 
-      3. **Flow & Conjunctions**:
-         - Use rich connective words (halbuki, oysaki, nitekim, buna rağmen) to ensure smooth transitions between sentences.
-         - Avoid repetitive sentence starts.
+      2. **Idioms & Phrasal Verbs**:
+         - Detect idioms (e.g., "break a leg", "cold feet"). Translate their *meaning*, not their words. Use equivalent local idioms.
+         - If a direct translation sounds awkward, rewrite it completely to convey the same feeling.
 
-      4. **Tone Consistency**:
-         - If the context implies dialogue, use spoken language patterns.
-         - If it is narration, use proper literary tense (di'li geçmiş zaman or miş'li geçmiş zaman depending on context).
+      3. **Vocabulary Selection**:
+         - Avoid repetitive or simple words (e.g., instead of just "said", use "whispered", "declared", "muttered" equivalents if context implies).
+         - Use rich, descriptive vocabulary appropriate for the genre (Istanbul Turkish for TR).
 
-      5. **HTML INTEGRITY**:
-         - You MUST preserve the HTML structure (p, div, b, i, h1, etc.).
-         - Do not translate class names or IDs.
-         - Only translate the *content* inside the tags.
+      4. **HTML & Formatting Handling**:
+         - **ABSOLUTE RULE**: You strictly preserve the HTML tags (<p>, <b>, <i>, <span>, etc.).
+         - Do NOT translate class names, IDs, or URLs.
+         - Only translate the *visible text* inside the tags.
+         - If splitting a long sentence improves readability in ${targetLanguage}, you may split the text *inside* the same paragraph tag.
 
-      ### INPUT HTML CHUNK
+      ### EXAMPLE (English -> Turkish)
+      *Input:* "He felt blue because it was raining cats and dogs."
+      *Bad Output:* "O mavi hissetti çünkü kedi ve köpek yağıyordu."
+      *Good Output:* "Bardaktan boşalırcasına yağan yağmur, içine derin bir hüzün çökertmişti."
+
+      ### INPUT HTML CHUNK TO PROCESS
       ${htmlContent}
     `;
   }
@@ -96,7 +97,7 @@ export const translateHtmlChunk = async (
       contents: prompt,
       config: {
         // High temperature allows for creative sentence restructuring (crucial for literary translation)
-        temperature: 0.85, 
+        temperature: 0.9, 
         // Max Thinking Budget allows the model to "draft" the sentence structure in its head before outputting.
         thinkingConfig: { thinkingBudget: 4096 } 
       }
@@ -109,7 +110,7 @@ export const translateHtmlChunk = async (
 
     return resultText;
   } catch (error) {
-    console.error("Gemini Translation Error:", error);
+    // Silent fail
     return htmlContent; 
   }
 };
